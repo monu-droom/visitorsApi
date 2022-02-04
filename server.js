@@ -1,7 +1,10 @@
 const express = require('express');
-var bodyParser = require('body-parser');
+const bodyParser = require('body-parser');
 const cookieParser = require("cookie-parser");
 const sessions = require('express-session');
+const multer = require('multer');
+const path = require('path');
+
 
 const app = express();
 
@@ -21,12 +24,10 @@ connection.connect(function(err) {
   console.log('You are now connected with mysql database...')
 });
 
-app.use(express.static(__dirname));
+app.use(express.static('./public'));
 
-app.use( bodyParser.json() );       // to support JSON-encoded bodies
-app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
-  extended: true
-}));
+app.use(bodyParser.json({limit: "50mb", type:'application/json'}));
+app.use(bodyParser.urlencoded({limit: "50mb", extended: true, parameterLimit:50000, type:'application/x-www-form-urlencoded'}));
 app.use(cookieParser());
 
 // creating 24 hours from milliseconds
@@ -37,7 +38,15 @@ const password = '123456'
 
 // a variable to save a session
 var session;
-
+var storage = multer.diskStorage({
+      destination: (req, file, callBack) => {
+        callBack(null, './public')     // './public/' directory name where save the file
+      },
+      filename: (req, file, callBack) => {
+          callBack(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname))
+      }
+    });    
+const upload = multer({ storage: storage });
 //session middleware
 app.use(sessions({
     secret: "thisismysecrctekeyfhrgfgrfrty84fwir767",
@@ -45,11 +54,18 @@ app.use(sessions({
     cookie: { maxAge: oneDay },
     resave: false
 }));
-
-app.post('/add-visitor', function(req, res){
-    const params  = req.body;
-    connection.query('INSERT INTO visitors SET ?', params, function (error, results, fields) {
+app.post('/add-visitor', upload.single('photo'), function(req, res){
+  console.log();
+    var imgsrc = req.headers.host + '/' + req.file.filename;
+    var keys = ['name', 'phone', 'address', 'whom_to_meet', 'purpose', 'photo'];
+    var values = [req.body.name, req.body.phone, req.body.address, req.body.whom_to_meet, req.body.purpose, imgsrc];
+    var obj = {}; 
+    for(var i = 0; i < keys.length; i++){
+        obj[keys[i]] = values[i];
+    }
+    connection.query('INSERT INTO visitors SET ?', obj, function (error, results, fields) {
         if (error) throw error;
+        else console.log('Data saved to table');        
         res.end(JSON.stringify(results));
     });
 });
